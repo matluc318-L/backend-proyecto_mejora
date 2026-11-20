@@ -56,6 +56,35 @@ Panel administrativo independiente para cargar marcas, categorías y productos d
    npm run dev
    ```
 
+## Dar acceso a otra persona
+
+### Para editar el mismo catálogo (mismo proyecto de Supabase)
+
+1. Entregar el código. Si se usa Git, `.env` no se incluye porque está en `.gitignore`: copiar `.env.example` a `.env` con la URL y la anon key del proyecto. Si se entrega la carpeta completa con `.env`, ya queda apuntando a ese Supabase. Nunca compartir la clave `service_role`.
+2. Instalar Node.js 18+, ejecutar `npm install` y luego `npm run dev`.
+3. Crear el usuario en **Authentication → Users → Add user** de Supabase (email y contraseña). El panel solo inicia sesión con correo y contraseña.
+4. Autorizar ese correo en el SQL Editor:
+
+   ```sql
+   insert into public.app_admins (email, user_id)
+   values ('companero@ejemplo.com', (select id from auth.users where lower(email) = lower('companero@ejemplo.com')))
+   on conflict (email) do update set user_id = excluded.user_id;
+   ```
+
+   Sin este paso aparece la pantalla "Sin permisos". La migración SQL no hace falta ejecutarla de nuevo porque ya está aplicada en ese proyecto.
+5. Ingresar en el panel con ese correo y contraseña. La búsqueda con Serper funciona sin configuración adicional, pero consume los créditos del proyecto.
+
+### Para usar un catálogo separado (otro proyecto de Supabase)
+
+Además de los pasos anteriores, en el proyecto nuevo hay que ejecutar la migración `supabase/migrations/20261119000000_restore_admin_access.sql`, crear y autorizar al usuario, desplegar la función con su propia key:
+
+```bash
+supabase secrets set SERPER_API_KEY=tu-key
+supabase functions deploy search-product-images
+```
+
+y colocar la URL y anon key del proyecto nuevo en el `.env`.
+
 ## Uso
 
 - **Productos / Marcas / Categorías**: alta, edición, eliminación y búsqueda manual. Los logos e imágenes se suben al bucket `catalog-images`.
