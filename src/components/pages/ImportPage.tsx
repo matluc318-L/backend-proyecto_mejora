@@ -110,7 +110,8 @@ export function ImportPage({
         <div className="grid content-center gap-3">
           <p className="text-sm text-muted">
             Columnas aceptadas: sku, name/nombre, brand/marca, category/categoría, description,
-            sale_price/precio, stock, status/estado e image_url.
+            sale_price/precio, stock, status/estado e image_url. Si el stock está dividido por
+            distrito (stock_lima, stock_arequipa...), se suma automáticamente.
           </p>
           <Button variant="secondary" onClick={downloadTemplate} className="justify-self-start">
             <Download size={16} /> Descargar plantilla

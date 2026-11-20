@@ -57,7 +57,7 @@ Panel administrativo independiente para cargar marcas, categorías y productos d
 | `category` | categoria | Se crea si no existe |
 | `description` | descripcion | Opcional |
 | `sale_price` | price, precio, precio_venta | Numérico |
-| `stock` | existencia, cantidad | Entero >= 0 |
+| `stock` | existencia, cantidad | Entero >= 0. Si hay varias columnas con prefijo `stock`, `existencia` o `cantidad` (por ejemplo `stock_lima`, `stock_arequipa`), se suman automáticamente; si existe una columna `stock` con valor, esa columna tiene prioridad |
 | `status` | estado | draft, review, published, archived (o borrador, revisión, publicado, archivado). Por defecto `draft` |
 | `image_url` | image, imagen, url_imagen | URL pública de la imagen |
 

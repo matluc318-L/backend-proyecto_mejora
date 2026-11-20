@@ -32,6 +32,29 @@ function pick(row: Record<string, unknown>, key: keyof typeof aliases): string {
   return ''
 }
 
+const stockAliases = ['stock', 'existencia', 'cantidad']
+
+function pickStock(row: Record<string, unknown>): { stock: number | null; error?: string } {
+  const matches = Object.keys(row)
+    .map((key) => ({ key, clean: normalize(key) }))
+    .filter(({ clean }) => stockAliases.some((alias) => clean === alias || clean.startsWith(alias)))
+  const exact = matches.find(({ key, clean }) =>
+    stockAliases.includes(clean) && String(row[key] ?? '').trim() !== '',
+  )
+  const sources = exact ? [exact] : matches.filter(({ clean }) => !stockAliases.includes(clean))
+
+  let stock = 0
+  for (const { key } of sources) {
+    const value = row[key]
+    const text = value === null || value === undefined ? '' : String(value).trim()
+    if (!text) continue
+    const parsed = toNumber(text)
+    if (parsed === null) return { stock: null, error: `Stock no numérico en "${key}"` }
+    stock += parsed
+  }
+  return { stock }
+}
+
 function toNumber(value: string): number | null {
   if (!value) return null
   const parsed = Number(value.replace(/\s/g, '').replace(/^\$/, '').replace(',', '.'))
@@ -67,10 +90,10 @@ export async function parseExcel(file: File): Promise<ImportRow[]> {
     const sku = pick(record, 'sku')
     const name = pick(record, 'name')
     const priceRaw = pick(record, 'sale_price')
-    const stockRaw = pick(record, 'stock')
     const statusRaw = pick(record, 'status')
     const salePrice = toNumber(priceRaw)
-    const stock = toNumber(stockRaw)
+    const stockResult = pickStock(record)
+    const stock = stockResult.stock
     const statusResult = toStatus(statusRaw)
     const errors: string[] = []
 
@@ -78,7 +101,7 @@ export async function parseExcel(file: File): Promise<ImportRow[]> {
     if (!name) errors.push('Falta nombre')
     if (priceRaw && salePrice === null) errors.push('Precio no numérico')
     if (salePrice !== null && salePrice < 0) errors.push('Precio negativo')
-    if (stockRaw && stock === null) errors.push('Stock no numérico')
+    if (stockResult.error) errors.push(stockResult.error)
     if (stock !== null && (!Number.isInteger(stock) || stock < 0)) errors.push('Stock inválido')
     if (statusResult.error) errors.push(statusResult.error)
 
