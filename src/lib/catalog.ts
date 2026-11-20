@@ -128,11 +128,20 @@ export async function ensureCategories(names: string[], existing: Category[]): P
 export async function upsertProducts(rows: ProductInput[]): Promise<string[]> {
   const errors: string[] = []
   for (let index = 0; index < rows.length; index += 100) {
-    const chunk = rows.slice(index, index + 100)
-    const { error } = await db()
-      .from('products')
-      .upsert(chunk.map(productPayload), { onConflict: 'sku' })
-    if (error) errors.push(`Filas ${index + 1}-${index + chunk.length}: ${error.message}`)
+    const chunk = rows.slice(index, index + 100).map(productPayload)
+    const { error } = await db().from('products').insert(chunk)
+    if (!error) continue
+    if (error.code !== '23505') {
+      errors.push(`Filas ${index + 1}-${index + chunk.length}: ${error.message}`)
+      continue
+    }
+    for (const row of chunk) {
+      const { error: updateError } = await db()
+        .from('products')
+        .update(row)
+        .eq('sku', row.sku)
+      if (updateError) errors.push(`SKU ${row.sku}: ${updateError.message}`)
+    }
   }
   return errors
 }

@@ -32,8 +32,12 @@ Panel administrativo independiente para cargar marcas, categorías y productos d
 5. Autorizar ese correo en el SQL Editor:
 
    ```sql
-   insert into public.app_admins (email) values ('admin@ejemplo.com');
+   insert into public.app_admins (email, user_id)
+   values ('admin@ejemplo.com', (select id from auth.users where lower(email) = lower('admin@ejemplo.com')))
+   on conflict (email) do update set user_id = excluded.user_id;
    ```
+
+   Si el usuario ya existía en `app_admins` con `user_id` nulo, vuelve a ejecutar la migración o este `insert` para completarlo. Puedes comprobarlo con `select email, user_id from public.app_admins;`.
 
 6. Iniciar el panel:
 
