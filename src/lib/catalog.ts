@@ -1,0 +1,138 @@
+import { supabase } from './supabase'
+import type { Brand, Category, Product } from './types'
+
+function db() {
+  if (!supabase) throw new Error('Supabase no está configurado. Revisa el archivo .env')
+  return supabase
+}
+
+export async function fetchBrands(): Promise<Brand[]> {
+  const { data, error } = await db().from('brands').select('*').order('name')
+  if (error) throw error
+  return (data ?? []) as Brand[]
+}
+
+export async function fetchCategories(): Promise<Category[]> {
+  const { data, error } = await db().from('categories').select('*').order('display_order')
+  if (error) throw error
+  return (data ?? []) as Category[]
+}
+
+export async function fetchProducts(): Promise<Product[]> {
+  const { data, error } = await db()
+    .from('products')
+    .select('*, brand:brands(name), category:categories(name)')
+    .order('updated_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as Product[]
+}
+
+export async function saveBrand(input: { id?: string; name: string; image_url: string | null }) {
+  const payload = { name: input.name.trim(), image_url: input.image_url }
+  const { error } = input.id
+    ? await db().from('brands').update(payload).eq('id', input.id)
+    : await db().from('brands').insert(payload)
+  if (error) throw error
+}
+
+export async function deleteBrand(id: string) {
+  const { error } = await db().from('brands').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function saveCategory(input: {
+  id?: string
+  name: string
+  display_order: number
+  description?: string | null
+}) {
+  const payload = {
+    name: input.name.trim(),
+    display_order: input.display_order,
+    description: input.description?.trim() || null,
+  }
+  const { error } = input.id
+    ? await db().from('categories').update(payload).eq('id', input.id)
+    : await db().from('categories').insert(payload)
+  if (error) throw error
+}
+
+export async function deleteCategory(id: string) {
+  const { error } = await db().from('categories').delete().eq('id', id)
+  if (error) throw error
+}
+
+export type ProductInput = Omit<Product, 'brand' | 'category' | 'updated_at'>
+
+function productPayload(input: ProductInput) {
+  return {
+    sku: input.sku.trim(),
+    name: input.name.trim(),
+    brand_id: input.brand_id || null,
+    category_id: input.category_id || null,
+    description: input.description?.trim() || null,
+    sale_price: input.sale_price,
+    stock: input.stock,
+    status: input.status,
+    image_url: input.image_url || null,
+  }
+}
+
+export async function saveProduct(input: ProductInput) {
+  const payload = productPayload(input)
+  const { error } = input.id
+    ? await db().from('products').update(payload).eq('id', input.id)
+    : await db().from('products').insert(payload)
+  if (error) throw error
+}
+
+export async function deleteProduct(id: string) {
+  const { error } = await db().from('products').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function ensureBrands(names: string[], existing: Brand[]): Promise<Brand[]> {
+  const known = new Set(existing.map((brand) => brand.name.trim().toLowerCase()))
+  const missing = [...new Set(names.map((name) => name.trim()).filter(Boolean))].filter(
+    (name) => !known.has(name.toLowerCase()),
+  )
+  if (missing.length) {
+    const { error } = await db()
+      .from('brands')
+      .insert(missing.map((name) => ({ name, image_url: null })))
+    if (error) throw error
+  }
+  return missing.length ? fetchBrands() : existing
+}
+
+export async function ensureCategories(names: string[], existing: Category[]): Promise<Category[]> {
+  const known = new Set(existing.map((category) => category.name.trim().toLowerCase()))
+  const missing = [...new Set(names.map((name) => name.trim()).filter(Boolean))].filter(
+    (name) => !known.has(name.toLowerCase()),
+  )
+  if (missing.length) {
+    const { error } = await db()
+      .from('categories')
+      .insert(
+        missing.map((name, index) => ({
+          name,
+          display_order: existing.length + index,
+          description: null,
+        })),
+      )
+    if (error) throw error
+  }
+  return missing.length ? fetchCategories() : existing
+}
+
+export async function upsertProducts(rows: ProductInput[]): Promise<string[]> {
+  const errors: string[] = []
+  for (let index = 0; index < rows.length; index += 100) {
+    const chunk = rows.slice(index, index + 100)
+    const { error } = await db()
+      .from('products')
+      .upsert(chunk.map(productPayload), { onConflict: 'sku' })
+    if (error) errors.push(`Filas ${index + 1}-${index + chunk.length}: ${error.message}`)
+  }
+  return errors
+}
