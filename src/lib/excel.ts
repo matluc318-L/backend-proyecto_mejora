@@ -1,6 +1,13 @@
 import * as XLSX from 'xlsx'
 import type { ImportRow, Status } from './types'
 
+const USD_TO_PEN = 3.46
+
+function toSoles(value: number | null): number | null {
+  if (value === null) return null
+  return Math.round(value * USD_TO_PEN * 100) / 100
+}
+
 const aliases: Record<keyof Omit<ImportRow, 'row' | 'errors'>, string[]> = {
   sku: ['sku', 'codigo', 'code'],
   name: ['name', 'nombre', 'producto'],
@@ -112,7 +119,7 @@ export async function parseExcel(file: File): Promise<ImportRow[]> {
       brand: pick(record, 'brand'),
       category: pick(record, 'category'),
       description: pick(record, 'description'),
-      sale_price: salePrice,
+      sale_price: toSoles(salePrice),
       stock: stock ?? 0,
       status: statusResult.status,
       image_url: pick(record, 'image_url') || null,

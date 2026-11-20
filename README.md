@@ -39,7 +39,18 @@ Panel administrativo independiente para cargar marcas, categorías y productos d
 
    Si el usuario ya existía en `app_admins` con `user_id` nulo, vuelve a ejecutar la migración o este `insert` para completarlo. Puedes comprobarlo con `select email, user_id from public.app_admins;`.
 
-6. Iniciar el panel:
+6. (Opcional) Búsqueda automática de imágenes al importar. Crear una API key en **serper.dev** (incluye 2.500 consultas gratis) y guardarla como secreto junto con la función:
+
+   ```bash
+   supabase login
+   supabase link --project-ref <ref-de-tu-proyecto>
+   supabase secrets set SERPER_API_KEY=tu-key
+   supabase functions deploy search-product-images
+   ```
+
+   La función busca por nombre del producto y, según las casillas marcadas al importar, descarga/sube la imagen al bucket `catalog-images` y/o devuelve el `title` encontrado. Ambas opciones comparten una sola llamada a Serper por fila; si no hay resultado, se conserva el nombre del Excel. Si no se configura, la importación funciona igual pero solo usa la columna `image_url` del Excel.
+
+7. Iniciar el panel:
 
    ```bash
    npm run dev
@@ -48,7 +59,7 @@ Panel administrativo independiente para cargar marcas, categorías y productos d
 ## Uso
 
 - **Productos / Marcas / Categorías**: alta, edición, eliminación y búsqueda manual. Los logos e imágenes se suben al bucket `catalog-images`.
-- **Importar Excel**: seleccionar un `.xlsx`/`.xls`, revisar la previsualización y confirmar. Las filas se insertan con `upsert` usando `sku` como clave, por lo que repetir un SKU actualiza el producto. Las marcas y categorías que no existan se crean automáticamente.
+- **Importar Excel**: seleccionar un `.xlsx`/`.xls`, revisar la previsualización y confirmar. En el modal se elige el estado y se pueden activar por separado la búsqueda de imágenes (solo filas sin `image_url`) y el uso del título de Serper como nombre. Las filas se insertan con `upsert` usando `sku` como clave, por lo que repetir un SKU actualiza el producto. Las marcas y categorías que no existan se crean automáticamente.
 - Para que un producto aparezca en la tienda, su estado debe ser **Publicado** (`published`).
 
 ### Columnas del Excel
@@ -60,10 +71,10 @@ Panel administrativo independiente para cargar marcas, categorías y productos d
 | `brand` | marca | Se crea si no existe |
 | `category` | categoria | Se crea si no existe |
 | `description` | descripcion | Opcional |
-| `sale_price` | price, precio, precio_venta | Numérico |
+| `sale_price` | price, precio, precio_venta | Numérico en dólares; se convierte a soles (x3.46) al importar |
 | `stock` | existencia, cantidad | Entero >= 0. Si hay varias columnas con prefijo `stock`, `existencia` o `cantidad` (por ejemplo `stock_lima`, `stock_arequipa`), se suman automáticamente; si existe una columna `stock` con valor, esa columna tiene prioridad |
 | `status` | estado | draft, review, published, archived (o borrador, revisión, publicado, archivado). Por defecto `draft` |
-| `image_url` | image, imagen, url_imagen | URL pública de la imagen |
+| `image_url` | image, imagen, url_imagen | URL pública de la imagen. Si falta y la búsqueda está activa, se obtiene por nombre con Serper |
 
 Se aceptan encabezados con mayúsculas, acentos, espacios o guiones bajos. El botón **Descargar plantilla** genera un archivo de ejemplo.
 
