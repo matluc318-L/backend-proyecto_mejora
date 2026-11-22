@@ -7,10 +7,14 @@ export function logAdminAction(
   details?: Record<string, unknown>,
 ) {
   if (!supabase) return
-  void supabase.rpc('log_admin_action', {
-    p_action: action,
-    p_target_table: targetTable,
-    p_target_id: targetId ?? null,
-    p_details: details ?? {},
-  })
+  void supabase
+    .rpc('log_admin_action', {
+      p_action: action,
+      p_target_table: targetTable,
+      p_target_id: targetId ?? null,
+      p_details: details ?? {},
+    })
+    .then(({ error }) => {
+      if (error) console.error('No se pudo registrar la auditoría', error)
+    })
 }
