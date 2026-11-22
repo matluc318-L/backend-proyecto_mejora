@@ -4,7 +4,7 @@ const maxNames = 10
 const bucket = 'catalog-images'
 const allowedOrigins = (Deno.env.get('ALLOWED_ORIGINS') ?? '')
   .split(',')
-  .map((origin) => origin.trim())
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
   .filter(Boolean)
 
 type SearchItem = {
@@ -27,10 +27,15 @@ type Candidate = {
   height: number
 }
 
+function normalizeOrigin(origin: string | null) {
+  return origin?.trim().replace(/\/+$/, '') || null
+}
+
 function isAllowedOrigin(origin: string | null) {
-  if (!origin) return false
-  if (allowedOrigins.includes(origin)) return true
-  return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+  const normalized = normalizeOrigin(origin)
+  if (!normalized) return false
+  if (allowedOrigins.includes(normalized)) return true
+  return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(normalized)
 }
 
 function corsHeaders(origin: string | null) {
@@ -39,7 +44,8 @@ function corsHeaders(origin: string | null) {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     Vary: 'Origin',
   }
-  if (isAllowedOrigin(origin)) headers['Access-Control-Allow-Origin'] = origin
+  const normalized = normalizeOrigin(origin)
+  if (isAllowedOrigin(normalized)) headers['Access-Control-Allow-Origin'] = normalized
   return headers
 }
 
