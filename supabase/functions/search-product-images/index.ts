@@ -1,13 +1,11 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-}
-
 const maxNames = 10
 const bucket = 'catalog-images'
+const allowedOrigins = (Deno.env.get('ALLOWED_ORIGINS') ?? '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean)
 
 type SearchItem = {
   name: string
@@ -29,11 +27,39 @@ type Candidate = {
   height: number
 }
 
-function json(body: unknown, status = 200) {
+function corsHeaders(origin: string | null) {
+  const headers: Record<string, string> = {
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    Vary: 'Origin',
+  }
+  if (origin && allowedOrigins.includes(origin)) headers['Access-Control-Allow-Origin'] = origin
+  return headers
+}
+
+function json(body: unknown, status = 200, origin: string | null = null) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' },
   })
+}
+
+async function isAuthorizedAdmin(req: Request) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
+  const authorization = req.headers.get('authorization')
+  if (!supabaseUrl || !anonKey || !authorization?.startsWith('Bearer ')) return false
+  const token = authorization.slice('Bearer '.length).trim()
+  if (!token) return false
+
+  const client = createClient(supabaseUrl, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  })
+  const { data: userData, error: userError } = await client.auth.getUser(token)
+  if (userError || !userData.user) return false
+  const { data, error } = await client.rpc('is_app_admin')
+  return !error && data === true
 }
 
 function normalizeUrl(value: string): string | null {
@@ -73,18 +99,24 @@ function extensionOf(contentType: string, url: string) {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  const origin = req.headers.get('origin')
+  const headers = corsHeaders(origin)
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers })
+  if (!allowedOrigins.length) return json({ error: 'ALLOWED_ORIGINS no configurado' }, 500, origin)
+  if (!origin || !allowedOrigins.includes(origin)) return json({ error: 'Origen no permitido' }, 403, origin)
+  if (req.method !== 'POST') return json({ error: 'Método no permitido' }, 405, origin)
+  if (!(await isAuthorizedAdmin(req))) return json({ error: 'No autorizado' }, 401, origin)
 
   const serperKey = Deno.env.get('SERPER_API_KEY')
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-  if (!serperKey) return json({ error: 'SERPER_API_KEY no configurado' }, 500)
+  if (!serperKey) return json({ error: 'SERPER_API_KEY no configurado' }, 500, origin)
 
   let payload: { items?: unknown }
   try {
     payload = await req.json()
   } catch {
-    return json({ error: 'Cuerpo inválido' }, 400)
+    return json({ error: 'Cuerpo inválido' }, 400, origin)
   }
 
   const items = (Array.isArray(payload.items) ? payload.items : [])
@@ -103,7 +135,7 @@ Deno.serve(async (req) => {
       includeImage: item.includeImage,
       includeTitle: item.includeTitle,
     }))
-  if (!items.length) return json({ results: [] })
+  if (!items.length) return json({ results: [] }, 200, origin)
 
   const results: SearchResult[] = []
 
@@ -180,15 +212,10 @@ Deno.serve(async (req) => {
           ? { error: item.includeImage ? 'No se encontró una imagen válida' : 'No se encontró un título' }
           : {}),
       })
-    } catch (error) {
-      results.push({
-        index,
-        image_url: null,
-        title: null,
-        error: error instanceof Error ? error.message : 'Error al buscar',
-      })
+    } catch {
+      results.push({ index, image_url: null, title: null, error: 'Error al buscar' })
     }
   }
 
-  return json({ results })
+  return json({ results }, 200, origin)
 })

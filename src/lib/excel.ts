@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx'
+import { PublicError } from './errors'
 import type { ImportRow, Status } from './types'
 
 const USD_TO_PEN = 3.46
@@ -90,7 +91,7 @@ export async function parseExcel(file: File): Promise<ImportRow[]> {
   const buffer = await file.arrayBuffer()
   const workbook = XLSX.read(buffer, { type: 'array' })
   const sheet = workbook.Sheets[workbook.SheetNames[0]]
-  if (!sheet) throw new Error('El archivo no tiene hojas')
+  if (!sheet) throw new PublicError('El archivo no tiene hojas')
   const records = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
 
   return records.map((record, index) => {

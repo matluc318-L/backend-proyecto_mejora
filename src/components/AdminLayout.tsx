@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { FileSpreadsheet, LayoutDashboard, LogOut, Package, Tags, Layers3 } from 'lucide-react'
+import { FileSpreadsheet, LayoutDashboard, LogOut, Package, Tags, Layers3, ScrollText } from 'lucide-react'
 import type { AdminPage } from '../lib/types'
 
 const items: { id: AdminPage; label: string; icon: typeof Package }[] = [
@@ -7,6 +7,7 @@ const items: { id: AdminPage; label: string; icon: typeof Package }[] = [
   { id: 'brands', label: 'Marcas', icon: Tags },
   { id: 'categories', label: 'Categorías', icon: Layers3 },
   { id: 'import', label: 'Importar Excel', icon: FileSpreadsheet },
+  { id: 'audit', label: 'Auditoría', icon: ScrollText },
 ]
 
 export function AdminLayout({

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Download, FileSpreadsheet, UploadCloud } from 'lucide-react'
 import { ensureBrands, ensureCategories, upsertProducts } from '../../lib/catalog'
 import { downloadTemplate, parseExcel } from '../../lib/excel'
+import { friendlyError } from '../../lib/errors'
 import { searchProductImages, type ImageSearchItem } from '../../lib/imageSearch'
 import type { Brand, Category, ImportRow, Status } from '../../lib/types'
 import { useToast } from '../toastContext'
@@ -48,7 +49,7 @@ export function ImportPage({
       setFileName(file.name)
       notify(`${parsed.length} filas leídas de ${file.name}`)
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'No se pudo leer el Excel', 'error')
+      notify(friendlyError(error, 'No se pudo leer el Excel'), 'error')
     } finally {
       setLoading(false)
     }
@@ -96,7 +97,7 @@ export function ImportPage({
             )
           }
         } catch (error) {
-          notify(error instanceof Error ? error.message : 'No se pudo completar la búsqueda', 'error')
+          notify(friendlyError(error, 'No se pudo completar la búsqueda'), 'error')
         } finally {
           setImageStatus('')
         }
@@ -135,7 +136,7 @@ export function ImportPage({
       notify('Importación finalizada', errors.length ? 'error' : 'success')
       await onRefresh()
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'No se pudo importar', 'error')
+      notify(friendlyError(error, 'No se pudo importar'), 'error')
     } finally {
       setImporting(false)
     }

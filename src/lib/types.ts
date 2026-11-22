@@ -30,7 +30,18 @@ export type Product = {
   category?: { name: string } | null
 }
 
-export type AdminPage = 'brands' | 'products' | 'categories' | 'import'
+export type AdminPage = 'brands' | 'products' | 'categories' | 'import' | 'audit'
+
+export type AuditLog = {
+  id: number
+  actor_id: string | null
+  actor_email: string | null
+  action: string
+  target_table: string
+  target_id: string | null
+  details: Record<string, unknown>
+  created_at: string
+}
 
 export type ImportRow = {
   row: number

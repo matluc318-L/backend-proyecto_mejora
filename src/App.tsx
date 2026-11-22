@@ -3,21 +3,27 @@ import type { Session } from '@supabase/supabase-js'
 import { LoaderCircle } from 'lucide-react'
 import { AdminLayout } from './components/AdminLayout'
 import { Login } from './components/Login'
+import { MfaScreen } from './components/MfaScreen'
 import { ToastProvider } from './components/Toast'
+import { AuditPage } from './components/pages/AuditPage'
 import { BrandsPage } from './components/pages/BrandsPage'
 import { CategoriesPage } from './components/pages/CategoriesPage'
 import { ImportPage } from './components/pages/ImportPage'
 import { ProductsPage } from './components/pages/ProductsPage'
 import { useToast } from './components/toastContext'
 import { fetchBrands, fetchCategories, fetchProducts } from './lib/catalog'
+import { friendlyError } from './lib/errors'
 import { supabase } from './lib/supabase'
 import type { AdminPage, Brand, Category, Product } from './lib/types'
+
+const requireMfa = import.meta.env.VITE_REQUIRE_MFA === 'true'
 
 function Dashboard() {
   const notify = useToast()
   const [session, setSession] = useState<Session | null>(null)
   const [checking, setChecking] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [aal, setAal] = useState<string | null>(null)
   const [page, setPage] = useState<AdminPage>('products')
   const [brands, setBrands] = useState<Brand[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -40,6 +46,20 @@ function Dashboard() {
     return () => data.subscription.unsubscribe()
   }, [])
 
+  const refreshAal = useCallback(async () => {
+    if (!supabase) return
+    const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+    setAal(data?.currentLevel ?? 'aal1')
+  }, [])
+
+  useEffect(() => {
+    if (!supabase || !session) {
+      setAal(null)
+      return
+    }
+    void refreshAal()
+  }, [session, refreshAal])
+
   useEffect(() => {
     if (!supabase || !session?.user.email) {
       setIsAdmin(false)
@@ -60,7 +80,7 @@ function Dashboard() {
   }, [session])
 
   const refresh = useCallback(async () => {
-    if (!isAdmin) return
+    if (!isAdmin || (requireMfa && aal !== 'aal2')) return
     setLoadingData(true)
     try {
       const [nextBrands, nextCategories, nextProducts] = await Promise.all([
@@ -72,11 +92,11 @@ function Dashboard() {
       setCategories(nextCategories)
       setProducts(nextProducts)
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'No se pudo cargar el catálogo', 'error')
+      notify(friendlyError(error, 'No se pudo cargar el catálogo'), 'error')
     } finally {
       setLoadingData(false)
     }
-  }, [isAdmin, notify])
+  }, [isAdmin, aal, notify])
 
   useEffect(() => {
     void refresh()
@@ -97,7 +117,7 @@ function Dashboard() {
 
   const client = supabase
 
-  if (checking) {
+  if (checking || (requireMfa && session && aal === null)) {
     return (
       <main className="grid min-h-screen place-items-center bg-surface-2">
         <LoaderCircle className="animate-spin text-blue" size={32} />
@@ -129,6 +149,15 @@ function Dashboard() {
     )
   }
 
+  if (requireMfa && aal !== 'aal2') {
+    return (
+      <MfaScreen
+        onVerified={() => void refreshAal()}
+        onLogout={() => void client.auth.signOut()}
+      />
+    )
+  }
+
   return (
     <AdminLayout
       email={email}
@@ -155,6 +184,7 @@ function Dashboard() {
           {page === 'import' && (
             <ImportPage brands={brands} categories={categories} onRefresh={refresh} />
           )}
+          {page === 'audit' && <AuditPage />}
         </>
       )}
     </AdminLayout>

@@ -1,5 +1,7 @@
+import { logAdminAction } from './audit'
+import { friendlyError } from './errors'
 import { supabase } from './supabase'
-import type { Brand, Category, Product } from './types'
+import type { AuditLog, Brand, Category, Product } from './types'
 
 function db() {
   if (!supabase) throw new Error('Supabase no está configurado. Revisa el archivo .env')
@@ -27,17 +29,31 @@ export async function fetchProducts(): Promise<Product[]> {
   return (data ?? []) as Product[]
 }
 
+export async function fetchAuditLogs(): Promise<AuditLog[]> {
+  const { data, error } = await db()
+    .from('admin_audit_log')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(100)
+  if (error) throw error
+  return (data ?? []) as AuditLog[]
+}
+
 export async function saveBrand(input: { id?: string; name: string; image_url: string | null }) {
   const payload = { name: input.name.trim(), image_url: input.image_url }
   const { error } = input.id
     ? await db().from('brands').update(payload).eq('id', input.id)
     : await db().from('brands').insert(payload)
   if (error) throw error
+  logAdminAction(input.id ? 'brand.update' : 'brand.create', 'brands', input.id ?? null, {
+    name: payload.name,
+  })
 }
 
 export async function deleteBrand(id: string) {
   const { error } = await db().from('brands').delete().eq('id', id)
   if (error) throw error
+  logAdminAction('brand.delete', 'brands', id)
 }
 
 export async function saveCategory(input: {
@@ -55,11 +71,15 @@ export async function saveCategory(input: {
     ? await db().from('categories').update(payload).eq('id', input.id)
     : await db().from('categories').insert(payload)
   if (error) throw error
+  logAdminAction(input.id ? 'category.update' : 'category.create', 'categories', input.id ?? null, {
+    name: payload.name,
+  })
 }
 
 export async function deleteCategory(id: string) {
   const { error } = await db().from('categories').delete().eq('id', id)
   if (error) throw error
+  logAdminAction('category.delete', 'categories', id)
 }
 
 export type ProductInput = Omit<Product, 'brand' | 'category' | 'updated_at'>
@@ -84,11 +104,15 @@ export async function saveProduct(input: ProductInput) {
     ? await db().from('products').update(payload).eq('id', input.id)
     : await db().from('products').insert(payload)
   if (error) throw error
+  logAdminAction(input.id ? 'product.update' : 'product.create', 'products', input.id ?? input.sku, {
+    sku: payload.sku,
+  })
 }
 
 export async function deleteProduct(id: string) {
   const { error } = await db().from('products').delete().eq('id', id)
   if (error) throw error
+  logAdminAction('product.delete', 'products', id)
 }
 
 export async function ensureBrands(names: string[], existing: Brand[]): Promise<Brand[]> {
@@ -101,6 +125,7 @@ export async function ensureBrands(names: string[], existing: Brand[]): Promise<
       .from('brands')
       .insert(missing.map((name) => ({ name, image_url: null })))
     if (error) throw error
+    logAdminAction('brand.import', 'brands', null, { count: missing.length })
   }
   return missing.length ? fetchBrands() : existing
 }
@@ -121,6 +146,7 @@ export async function ensureCategories(names: string[], existing: Category[]): P
         })),
       )
     if (error) throw error
+    logAdminAction('category.import', 'categories', null, { count: missing.length })
   }
   return missing.length ? fetchCategories() : existing
 }
@@ -132,7 +158,7 @@ export async function upsertProducts(rows: ProductInput[]): Promise<string[]> {
     const { error } = await db().from('products').insert(chunk)
     if (!error) continue
     if (error.code !== '23505') {
-      errors.push(`Filas ${index + 1}-${index + chunk.length}: ${error.message}`)
+      errors.push(`Filas ${index + 1}-${index + chunk.length}: ${friendlyError(error, 'No se pudo guardar')}`)
       continue
     }
     for (const row of chunk) {
@@ -140,8 +166,12 @@ export async function upsertProducts(rows: ProductInput[]): Promise<string[]> {
         .from('products')
         .update(row)
         .eq('sku', row.sku)
-      if (updateError) errors.push(`SKU ${row.sku}: ${updateError.message}`)
+      if (updateError) errors.push(`SKU ${row.sku}: ${friendlyError(updateError, 'No se pudo guardar')}`)
     }
   }
+  logAdminAction('product.import', 'products', null, {
+    rows: rows.length,
+    errors: errors.length,
+  })
   return errors
 }

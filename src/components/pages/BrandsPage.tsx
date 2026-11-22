@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Pencil, Plus, Search, Trash2, Upload } from 'lucide-react'
 import { deleteBrand, saveBrand } from '../../lib/catalog'
+import { friendlyError } from '../../lib/errors'
 import { uploadImage } from '../../lib/supabase'
 import type { Brand } from '../../lib/types'
 import { useToast } from '../toastContext'
@@ -47,7 +48,7 @@ export function BrandsPage({
       setEditing(null)
       await onRefresh()
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'No se pudo guardar', 'error')
+      notify(friendlyError(error, 'No se pudo guardar'), 'error')
     } finally {
       setSaving(false)
     }
@@ -60,7 +61,7 @@ export function BrandsPage({
       notify('Marca eliminada')
       await onRefresh()
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'No se pudo eliminar', 'error')
+      notify(friendlyError(error, 'No se pudo eliminar'), 'error')
     }
   }
 

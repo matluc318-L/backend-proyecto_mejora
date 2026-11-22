@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { LockKeyhole } from 'lucide-react'
+import { friendlyError } from '../lib/errors'
 import { supabase } from '../lib/supabase'
 import { Button, Field, inputClass } from './ui'
 
@@ -19,7 +20,7 @@ export function Login() {
     setLoading(true)
     setError('')
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
-    if (signInError) setError(signInError.message)
+    if (signInError) setError(friendlyError(signInError, 'No se pudo iniciar sesión'))
     setLoading(false)
   }
 

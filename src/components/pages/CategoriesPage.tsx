@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { deleteCategory, saveCategory } from '../../lib/catalog'
+import { friendlyError } from '../../lib/errors'
 import type { Category } from '../../lib/types'
 import { useToast } from '../toastContext'
 import { Button, Empty, Field, Modal, inputClass } from '../ui'
@@ -44,7 +45,7 @@ export function CategoriesPage({
       setEditing(null)
       await onRefresh()
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'No se pudo guardar', 'error')
+      notify(friendlyError(error, 'No se pudo guardar'), 'error')
     } finally {
       setSaving(false)
     }
@@ -57,7 +58,7 @@ export function CategoriesPage({
       notify('Categoría eliminada')
       await onRefresh()
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'No se pudo eliminar', 'error')
+      notify(friendlyError(error, 'No se pudo eliminar'), 'error')
     }
   }
 

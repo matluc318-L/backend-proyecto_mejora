@@ -22,10 +22,11 @@ Panel administrativo independiente para cargar marcas, categorías y productos d
    VITE_SUPABASE_ANON_KEY=tu-anon-key-publica
    ```
 
-3. En el SQL Editor de Supabase, ejecutar `supabase/migrations/20261119000000_restore_admin_access.sql`. Esta migración:
-   - crea `app_admins` y la función `is_app_admin()`;
-   - restaura INSERT/UPDATE/DELETE de `brands`, `categories` y `products` solo para administradores;
-   - crea el bucket público `catalog-images` para logos e imágenes.
+3. En el SQL Editor de Supabase, ejecutar `supabase/migrations/20261119000000_restore_admin_access.sql` y `supabase/migrations/20261122000000_admin_audit.sql`. Estas migraciones:
+   - crean `app_admins`, `admin_audit_log` y las funciones `is_app_admin()` y `log_admin_action()`;
+   - restauran INSERT/UPDATE/DELETE de `brands`, `categories` y `products` solo para administradores;
+   - permiten a los administradores leer la auditoría, pero no modificarla;
+   - crean el bucket público `catalog-images` para logos e imágenes.
 
 4. Crear el usuario administrador en **Authentication → Users** de Supabase (email y contraseña).
 
@@ -45,12 +46,22 @@ Panel administrativo independiente para cargar marcas, categorías y productos d
    supabase login
    supabase link --project-ref <ref-de-tu-proyecto>
    supabase secrets set SERPER_API_KEY=tu-key
+   supabase secrets set ALLOWED_ORIGINS=http://localhost:5173,https://tu-panel.ejemplo.com
    supabase functions deploy search-product-images
    ```
 
+   `ALLOWED_ORIGINS` debe contener los orígenes exactos (esquema + host + puerto) desde los que se usa el panel, separados por comas. La función rechaza cualquier otro origen y exige un JWT válido de administrador.
+
    La función busca por nombre del producto y, según las casillas marcadas al importar, descarga/sube la imagen al bucket `catalog-images` y/o devuelve el `title` encontrado. Ambas opciones comparten una sola llamada a Serper por fila; si no hay resultado, se conserva el nombre del Excel. Si no se configura, la importación funciona igual pero solo usa la columna `image_url` del Excel.
 
-7. Iniciar el panel:
+7. (Recomendado) Exigir MFA a los administradores:
+   1. Habilitar TOTP en **Authentication → MFA** del panel de Supabase.
+   2. Ejecutar `supabase/migrations/20261122000001_require_admin_mfa.sql` en el SQL Editor.
+   3. Agregar `VITE_REQUIRE_MFA=true` al `.env`.
+
+   Al ingresar, el panel pedirá escanear un QR (solo la primera vez) y luego un código de 6 dígitos. No ejecutar esa migración si MFA no está habilitado en Supabase: las escrituras quedarían bloqueadas.
+
+8. Iniciar el panel:
 
    ```bash
    npm run dev
@@ -80,10 +91,11 @@ Además de los pasos anteriores, en el proyecto nuevo hay que ejecutar la migrac
 
 ```bash
 supabase secrets set SERPER_API_KEY=tu-key
+supabase secrets set ALLOWED_ORIGINS=https://tu-panel.ejemplo.com
 supabase functions deploy search-product-images
 ```
 
-y colocar la URL y anon key del proyecto nuevo en el `.env`.
+y colocar la URL, la anon key y `VITE_REQUIRE_MFA` del proyecto nuevo en el `.env`. Si se exige MFA, ejecutar también la migración `20261122000001_require_admin_mfa.sql` y configurar TOTP en ese proyecto.
 
 ## Uso
 
@@ -118,6 +130,10 @@ npm run build
 
 ## Seguridad
 
-- El frontend solo usa la clave `anon`; la clave `service_role` nunca se incluye en el proyecto.
-- El acceso de escritura se controla con RLS mediante `app_admins`.
-- El bucket `catalog-images` es público para lectura, pero solo los administradores pueden subir o borrar archivos.
+- El frontend solo usa la clave `anon`; la clave `service_role` nunca se incluye en el proyecto. `.env` está en `.gitignore` y no aparece en el historial de Git.
+- El acceso de lectura y escritura se controla con RLS mediante `app_admins`.
+- La búsqueda de imágenes valida el JWT y el rol admin, y solo acepta peticiones desde los orígenes declarados en `ALLOWED_ORIGINS`. Sin ese secreto, la función responde 500 en lugar de quedar abierta.
+- Si se aplica la migración de MFA, `is_app_admin()` también exige el factor TOTP en el token, por lo que un JWT de contraseña solo no alcanza para escrituras ni para invocar la función.
+- Las altas, ediciones, borrados e importaciones se registran en `admin_audit_log` mediante una función `SECURITY DEFINER`. Los admins pueden leerla desde **Auditoría**, pero no alterarla (no hay policies de INSERT/UPDATE/DELETE).
+- La sesión usa `persistSession`/`autoRefreshToken` con flujo PKCE; `detectSessionInUrl` está desactivado porque no hay login OAuth.
+- Los errores que llegan del cliente de Supabase se mapean a mensajes genéricos antes de mostrarse; los errores de validación propios del Excel se marcan como `PublicError` para conservar su texto.

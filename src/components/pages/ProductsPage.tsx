@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Pencil, Plus, Search, Trash2, Upload } from 'lucide-react'
 import { deleteProduct, saveProduct } from '../../lib/catalog'
 import type { ProductInput } from '../../lib/catalog'
+import { friendlyError } from '../../lib/errors'
 import { uploadImage } from '../../lib/supabase'
 import type { Brand, Category, Product, Status } from '../../lib/types'
 import { useToast } from '../toastContext'
@@ -82,7 +83,7 @@ export function ProductsPage({
       setEditing(null)
       await onRefresh()
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'No se pudo guardar', 'error')
+      notify(friendlyError(error, 'No se pudo guardar'), 'error')
     } finally {
       setSaving(false)
     }
@@ -95,7 +96,7 @@ export function ProductsPage({
       notify('Producto eliminado')
       await onRefresh()
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'No se pudo eliminar', 'error')
+      notify(friendlyError(error, 'No se pudo eliminar'), 'error')
     }
   }
 
