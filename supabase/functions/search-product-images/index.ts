@@ -27,13 +27,19 @@ type Candidate = {
   height: number
 }
 
+function isAllowedOrigin(origin: string | null) {
+  if (!origin) return false
+  if (allowedOrigins.includes(origin)) return true
+  return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+}
+
 function corsHeaders(origin: string | null) {
   const headers: Record<string, string> = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     Vary: 'Origin',
   }
-  if (origin && allowedOrigins.includes(origin)) headers['Access-Control-Allow-Origin'] = origin
+  if (isAllowedOrigin(origin)) headers['Access-Control-Allow-Origin'] = origin
   return headers
 }
 
@@ -44,22 +50,28 @@ function json(body: unknown, status = 200, origin: string | null = null) {
   })
 }
 
-async function isAuthorizedAdmin(req: Request) {
+type AuthResult = { ok: true } | { ok: false; reason: string }
+
+async function isAuthorizedAdmin(req: Request): Promise<AuthResult> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
   const authorization = req.headers.get('authorization')
-  if (!supabaseUrl || !anonKey || !authorization?.startsWith('Bearer ')) return false
+  if (!supabaseUrl || !anonKey) return { ok: false, reason: 'supabase sin configurar' }
+  if (!authorization?.startsWith('Bearer ')) return { ok: false, reason: 'sin token' }
   const token = authorization.slice('Bearer '.length).trim()
-  if (!token) return false
+  if (!token) return { ok: false, reason: 'token vacío' }
 
   const client = createClient(supabaseUrl, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { headers: { Authorization: `Bearer ${token}` } },
   })
   const { data: userData, error: userError } = await client.auth.getUser(token)
-  if (userError || !userData.user) return false
+  if (userError || !userData.user) {
+    return { ok: false, reason: `usuario inválido: ${userError?.message ?? 'sin usuario'}` }
+  }
   const { data, error } = await client.rpc('is_app_admin')
-  return !error && data === true
+  if (error || data !== true) return { ok: false, reason: 'usuario no autorizado' }
+  return { ok: true }
 }
 
 function normalizeUrl(value: string): string | null {
@@ -103,9 +115,13 @@ Deno.serve(async (req) => {
   const headers = corsHeaders(origin)
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers })
   if (!allowedOrigins.length) return json({ error: 'ALLOWED_ORIGINS no configurado' }, 500, origin)
-  if (!origin || !allowedOrigins.includes(origin)) return json({ error: 'Origen no permitido' }, 403, origin)
+  if (!isAllowedOrigin(origin)) return json({ error: 'Origen no permitido' }, 403, origin)
   if (req.method !== 'POST') return json({ error: 'Método no permitido' }, 405, origin)
-  if (!(await isAuthorizedAdmin(req))) return json({ error: 'No autorizado' }, 401, origin)
+  const auth = await isAuthorizedAdmin(req)
+  if (!auth.ok) {
+    console.warn('search-product-images rechazado:', auth.reason)
+    return json({ error: 'No autorizado' }, 401, origin)
+  }
 
   const serperKey = Deno.env.get('SERPER_API_KEY')
   const supabaseUrl = Deno.env.get('SUPABASE_URL')

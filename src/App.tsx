@@ -25,10 +25,18 @@ function Dashboard() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [aal, setAal] = useState<string | null>(null)
   const [page, setPage] = useState<AdminPage>('products')
+  const [brandFilterId, setBrandFilterId] = useState<string | null>(null)
   const [brands, setBrands] = useState<Brand[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [loadingData, setLoadingData] = useState(true)
+
+  const selectedBrand = brands.find((brand) => brand.id === brandFilterId) ?? null
+
+  function navigate(next: AdminPage) {
+    setPage(next)
+    if (next === 'products') setBrandFilterId(null)
+  }
 
   useEffect(() => {
     if (!supabase) {
@@ -162,7 +170,7 @@ function Dashboard() {
     <AdminLayout
       email={email}
       active={page}
-      onNavigate={setPage}
+      onNavigate={navigate}
       onLogout={() => void client.auth.signOut()}
     >
       {loadingData ? (
@@ -176,10 +184,21 @@ function Dashboard() {
               products={products}
               brands={brands}
               categories={categories}
+              brandFilter={brandFilterId ? { id: brandFilterId, name: selectedBrand?.name ?? 'Marca' } : null}
+              onClearBrandFilter={() => setBrandFilterId(null)}
               onRefresh={refresh}
             />
           )}
-          {page === 'brands' && <BrandsPage brands={brands} onRefresh={refresh} />}
+          {page === 'brands' && (
+            <BrandsPage
+              brands={brands}
+              onViewProducts={(brand) => {
+                setBrandFilterId(brand.id)
+                setPage('products')
+              }}
+              onRefresh={refresh}
+            />
+          )}
           {page === 'categories' && <CategoriesPage categories={categories} onRefresh={refresh} />}
           {page === 'import' && (
             <ImportPage brands={brands} categories={categories} onRefresh={refresh} />

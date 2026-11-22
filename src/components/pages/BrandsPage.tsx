@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pencil, Plus, Search, Trash2, Upload } from 'lucide-react'
+import { ArrowRight, Pencil, Plus, Search, Trash2, Upload } from 'lucide-react'
 import { deleteBrand, saveBrand } from '../../lib/catalog'
 import { friendlyError } from '../../lib/errors'
 import { uploadImage } from '../../lib/supabase'
@@ -9,9 +9,11 @@ import { Button, Empty, Field, Modal, inputClass } from '../ui'
 
 export function BrandsPage({
   brands,
+  onViewProducts,
   onRefresh,
 }: {
   brands: Brand[]
+  onViewProducts: (brand: Brand) => void
   onRefresh: () => Promise<void>
 }) {
   const notify = useToast()
@@ -113,6 +115,15 @@ export function BrandsPage({
                 <td className="px-5 py-3 font-semibold">{brand.name}</td>
                 <td className="px-5 py-3">
                   <div className="flex justify-end gap-2">
+                    <Button
+                      variant="secondary"
+                      className="px-2.5"
+                      onClick={() => onViewProducts(brand)}
+                      title={`Ver productos de ${brand.name}`}
+                      aria-label={`Ver productos de ${brand.name}`}
+                    >
+                      <ArrowRight size={16} />
+                    </Button>
                     <Button variant="secondary" onClick={() => openForm(brand)}>
                       <Pencil size={15} /> Editar
                     </Button>

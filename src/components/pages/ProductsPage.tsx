@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Pencil, Plus, Search, Trash2, Upload } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ChevronLeft, ChevronRight, Pencil, Plus, Search, Trash2, Upload, X } from 'lucide-react'
 import { deleteProduct, saveProduct } from '../../lib/catalog'
 import type { ProductInput } from '../../lib/catalog'
 import { friendlyError } from '../../lib/errors'
@@ -24,11 +24,15 @@ export function ProductsPage({
   products,
   brands,
   categories,
+  brandFilter,
+  onClearBrandFilter,
   onRefresh,
 }: {
   products: Product[]
   brands: Brand[]
   categories: Category[]
+  brandFilter?: { id: string; name: string } | null
+  onClearBrandFilter?: () => void
   onRefresh: () => Promise<void>
 }) {
   const notify = useToast()
@@ -38,13 +42,27 @@ export function ProductsPage({
   const [form, setForm] = useState<ProductInput>(blank)
   const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
+  const [pageNumber, setPageNumber] = useState(1)
+  const pageSize = 15
 
   const visible = products.filter((product) => {
     const matchesSearch =
       product.name.toLowerCase().includes(search.toLowerCase()) ||
       product.sku.toLowerCase().includes(search.toLowerCase())
-    return matchesSearch && (status === 'all' || product.status === status)
+    const matchesBrand = !brandFilter || product.brand_id === brandFilter.id
+    return matchesBrand && matchesSearch && (status === 'all' || product.status === status)
   })
+
+  const totalPages = Math.max(1, Math.ceil(visible.length / pageSize))
+  const currentPage = Math.min(pageNumber, totalPages)
+  const pageProducts = visible.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  const pageWindow = Math.min(5, totalPages)
+  const firstPage = Math.max(1, Math.min(currentPage - 2, totalPages - pageWindow + 1))
+  const pageNumbers = Array.from({ length: pageWindow }, (_, index) => firstPage + index)
+
+  useEffect(() => {
+    setPageNumber(1)
+  }, [search, status, brandFilter?.id])
 
   function openForm(product: Product | 'new') {
     setEditing(product)
@@ -104,8 +122,14 @@ export function ProductsPage({
     <section className="grid gap-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold">Productos</h1>
-          <p className="text-sm text-muted">{products.length} productos en el catálogo</p>
+          <h1 className="text-2xl font-extrabold">
+            {brandFilter ? `Productos · ${brandFilter.name}` : 'Productos'}
+          </h1>
+          <p className="text-sm text-muted">
+            {brandFilter
+              ? `${visible.length} productos de ${brandFilter.name}`
+              : `${products.length} productos en el catálogo`}
+          </p>
         </div>
         <Button onClick={() => openForm('new')}>
           <Plus size={17} /> Nuevo producto
@@ -131,6 +155,19 @@ export function ProductsPage({
         </select>
       </div>
 
+      {brandFilter && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue/20 bg-blue-soft px-4 py-3 text-sm">
+          <span className="font-semibold text-blue-bright">
+            Mostrando solo productos de {brandFilter.name}
+          </span>
+          {onClearBrandFilter && (
+            <Button variant="ghost" onClick={onClearBrandFilter}>
+              <X size={15} /> Ver todos
+            </Button>
+          )}
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-xl border border-line bg-white">
         <table className="w-full min-w-[860px] text-left text-sm">
           <thead className="border-b border-line bg-surface-2 text-xs uppercase tracking-wide text-muted">
@@ -145,7 +182,7 @@ export function ProductsPage({
             </tr>
           </thead>
           <tbody>
-            {visible.map((product) => (
+            {pageProducts.map((product) => (
               <tr key={product.id} className="border-b border-line last:border-0">
                 <td className="px-5 py-3 font-mono text-xs text-muted">{product.sku}</td>
                 <td className="px-5 py-3 font-semibold">{product.name}</td>
@@ -170,6 +207,43 @@ export function ProductsPage({
           </tbody>
         </table>
         {!visible.length && <Empty text="No hay productos para mostrar" />}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted">
+          {visible.length
+            ? `Mostrando ${(currentPage - 1) * pageSize + 1}-${Math.min(currentPage * pageSize, visible.length)} de ${visible.length}`
+            : '0 productos'}
+        </p>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="secondary"
+            onClick={() => setPageNumber(currentPage - 1)}
+            disabled={currentPage === 1}
+          >
+            <ChevronLeft size={16} /> Anterior
+          </Button>
+          <div className="flex items-center gap-1">
+            {pageNumbers.map((number) => (
+              <Button
+                key={number}
+                variant={number === currentPage ? 'primary' : 'secondary'}
+                className="min-w-9 px-3"
+                onClick={() => setPageNumber(number)}
+                aria-current={number === currentPage ? 'page' : undefined}
+              >
+                {number}
+              </Button>
+            ))}
+          </div>
+          <Button
+            variant="secondary"
+            onClick={() => setPageNumber(currentPage + 1)}
+            disabled={currentPage === totalPages}
+          >
+            Siguiente <ChevronRight size={16} />
+          </Button>
+        </div>
       </div>
 
       <Modal
