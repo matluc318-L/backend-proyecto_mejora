@@ -106,7 +106,13 @@ export function MfaScreen({
 
         {mode === 'enroll' && (
           <div className="mb-5 grid justify-items-center gap-3">
-            {qrCode && <img src={`data:image/svg+xml;utf-8,${qrCode}`} alt="Código QR de MFA" className="h-40 w-40" />}
+            {qrCode && (
+              <img
+                src={qrCode.startsWith('data:') ? qrCode : `data:image/svg+xml;utf-8,${qrCode}`}
+                alt="Código QR de MFA"
+                className="h-40 w-40"
+              />
+            )}
             <p className="break-all rounded-lg bg-surface-2 px-3 py-2 text-center font-mono text-xs">
               {secret}
             </p>
