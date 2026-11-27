@@ -19,6 +19,9 @@ const aliases: Record<keyof Omit<ImportRow, 'row' | 'errors'>, string[]> = {
   stock: ['stock', 'existencia', 'cantidad'],
   status: ['status', 'estado'],
   image_url: ['image_url', 'image', 'imagen', 'ur imagen', 'urlimagen'],
+  image_url_2: ['image_url_2', 'image_2', 'imagen_2', 'imagen2', 'url_imagen_2'],
+  image_url_3: ['image_url_3', 'image_3', 'imagen_3', 'imagen3', 'url_imagen_3'],
+  image_url_4: ['image_url_4', 'image_4', 'imagen_4', 'imagen4', 'url_imagen_4'],
 }
 
 const normalize = (value: string) =>
@@ -124,6 +127,9 @@ export async function parseExcel(file: File): Promise<ImportRow[]> {
       stock: stock ?? 0,
       status: statusResult.status,
       image_url: pick(record, 'image_url') || null,
+      image_url_2: pick(record, 'image_url_2') || null,
+      image_url_3: pick(record, 'image_url_3') || null,
+      image_url_4: pick(record, 'image_url_4') || null,
       errors,
     }
   })
@@ -140,6 +146,9 @@ export function downloadTemplate() {
     'stock',
     'status',
     'image_url',
+    'image_url_2',
+    'image_url_3',
+    'image_url_4',
   ]
   const example = [
     'DEMO-001',
@@ -150,6 +159,9 @@ export function downloadTemplate() {
     99.9,
     10,
     'draft',
+    '',
+    '',
+    '',
     '',
   ]
   const sheet = XLSX.utils.aoa_to_sheet([header, example])

@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { Download, FileSpreadsheet, UploadCloud } from 'lucide-react'
-import { ensureBrands, ensureCategories, upsertProducts } from '../../lib/catalog'
+import { ensureBrands, ensureCategories, upsertProducts, type ProductInput } from '../../lib/catalog'
 import { downloadTemplate, parseExcel } from '../../lib/excel'
 import { friendlyError } from '../../lib/errors'
 import { searchProductImages, type ImageSearchItem } from '../../lib/imageSearch'
 import type { Brand, Category, ImportRow, Status } from '../../lib/types'
 import { useToast } from '../toastContext'
 import { Button, Empty, Field, Modal, inputClass } from '../ui'
+
+const rowImages = (row: ImportRow) => [row.image_url, row.image_url_2, row.image_url_3, row.image_url_4]
 
 const statusOptions: { value: Status; label: string }[] = [
   { value: 'draft', label: 'Borrador' },
@@ -65,12 +67,12 @@ export function ImportPage({
     setShowStatusModal(false)
     setImporting(true)
     try {
-      const imagesByRow = new Map<number, string | null>()
+      const imagesByRow = new Map<number, (string | null)[]>()
       const namesByRow = new Map<number, string>()
       const targets: { row: ImportRow; item: ImageSearchItem }[] = []
       for (const row of valid) {
         if (!row.name) continue
-        const includeImage = searchImages && !row.image_url
+        const includeImage = searchImages && rowImages(row).some((url) => !url)
         if (!includeImage && !useApiTitle) continue
         targets.push({ row, item: { name: row.name, includeImage, includeTitle: useApiTitle } })
       }
@@ -85,8 +87,8 @@ export function ImportPage({
             batch.forEach((target, index) => {
               const match = matches[index]
               if (!match) return
-              if (target.item.includeImage && match.image_url) {
-                imagesByRow.set(target.row.row, match.image_url)
+              if (target.item.includeImage && match.image_urls.some(Boolean)) {
+                imagesByRow.set(target.row.row, match.image_urls)
               }
               if (target.item.includeTitle && match.title) {
                 namesByRow.set(target.row.row, match.title)
@@ -110,24 +112,30 @@ export function ImportPage({
         valid.map((row) => row.category),
         categories,
       )
-      const payload = valid.map((row) => ({
-        sku: row.sku,
-        name: namesByRow.get(row.row) ?? row.name,
-        brand_id:
-          nextBrands.find((brand) => brand.name.trim().toLowerCase() === row.brand.trim().toLowerCase())
-            ?.id ?? null,
-        category_id:
-          nextCategories.find(
-            (category) => category.name.trim().toLowerCase() === row.category.trim().toLowerCase(),
-          )?.id ?? null,
-        description: row.description || null,
-        sale_price: row.sale_price,
-        stock: row.stock,
-        status: importStatus,
-        image_url: imagesByRow.get(row.row) ?? row.image_url,
-      }))
+      const payload: ProductInput[] = valid.map((row) => {
+        const found = imagesByRow.get(row.row) ?? []
+        const images = rowImages(row).map((url, index) => found[index] ?? url)
+        return {
+          sku: row.sku,
+          name: namesByRow.get(row.row) ?? row.name,
+          brand_id:
+            nextBrands.find(
+              (brand) => brand.name.trim().toLowerCase() === row.brand.trim().toLowerCase(),
+            )?.id ?? null,
+          category_id:
+            nextCategories.find(
+              (category) => category.name.trim().toLowerCase() === row.category.trim().toLowerCase(),
+            )?.id ?? null,
+          description: row.description || null,
+          sale_price: row.sale_price,
+          stock: row.stock,
+          status: importStatus,
+          image_url: images[0] ?? null,
+          image_urls: images.slice(1).filter((url): url is string => Boolean(url)),
+        }
+      })
       const errors = await upsertProducts(payload)
-      const withImage = payload.filter((row) => row.image_url).length
+      const withImage = payload.filter((row) => row.image_url || row.image_urls?.length).length
       setResult(
         errors.length
           ? `${payload.length - errors.length} filas importadas con errores: ${errors.join(' | ')}`
@@ -168,7 +176,8 @@ export function ImportPage({
         <div className="grid content-center gap-3">
           <p className="text-sm text-muted">
             Columnas aceptadas: sku, name/nombre, brand/marca, category/categoría, description,
-            sale_price/precio, stock, status/estado e image_url. Los precios se leen en dólares y
+            sale_price/precio, stock, status/estado, image_url, image_url_2, image_url_3 e
+            image_url_4. Los precios se leen en dólares y
             se convierten a soles (x3.46). Si el stock está dividido por distrito (stock_lima,
             stock_arequipa...), se suma automáticamente.
           </p>
@@ -276,8 +285,8 @@ export function ImportPage({
                 onChange={(event) => setSearchImages(event.target.checked)}
               />
               <span>
-                Buscar imagen con Serper. Solo se buscarán filas sin imagen en el Excel y la imagen
-                encontrada se subirá a Supabase.
+                Buscar hasta 4 imágenes con Serper. Solo se buscarán filas con algún espacio vacío
+                y las imágenes encontradas se subirán a Supabase.
               </span>
             </label>
             <label className="flex items-start gap-3 rounded-lg bg-surface-2 p-3 text-sm">

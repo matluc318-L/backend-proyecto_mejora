@@ -22,11 +22,12 @@ Panel administrativo independiente para cargar marcas, categorías y productos d
    VITE_SUPABASE_ANON_KEY=tu-anon-key-publica
    ```
 
-3. En el SQL Editor de Supabase, ejecutar `supabase/migrations/20261119000000_restore_admin_access.sql` y `supabase/migrations/20261122000000_admin_audit.sql`. Estas migraciones:
+3. En el SQL Editor de Supabase, ejecutar `supabase/migrations/20261119000000_restore_admin_access.sql`, `supabase/migrations/20261122000000_admin_audit.sql`, `supabase/migrations/20261127000000_product_four_images.sql` y `supabase/migrations/20261127010000_product_image_urls_array.sql`. Estas migraciones:
    - crean `app_admins`, `admin_audit_log` y las funciones `is_app_admin()` y `log_admin_action()`;
    - restauran INSERT/UPDATE/DELETE de `brands`, `categories` y `products` solo para administradores;
    - permiten a los administradores leer la auditoría, pero no modificarla;
-   - crean el bucket público `catalog-images` para logos e imágenes.
+   - crean el bucket público `catalog-images` para logos e imágenes;
+   - agregan `image_url_2`, `image_url_3` e `image_url_4` a `products` y luego `image_urls` con las imágenes extra (la tienda lee `image_url` + `image_urls`, hasta 4 en total).
 
 4. Crear el usuario administrador en **Authentication → Users** de Supabase (email y contraseña).
 
@@ -52,7 +53,7 @@ Panel administrativo independiente para cargar marcas, categorías y productos d
 
    `ALLOWED_ORIGINS` debe contener los orígenes exactos (esquema + host + puerto) desde los que se usa el panel, separados por comas. La función rechaza cualquier otro origen y exige un JWT válido de administrador.
 
-   La función busca por nombre del producto y, según las casillas marcadas al importar, descarga/sube la imagen al bucket `catalog-images` y/o devuelve el `title` encontrado. Ambas opciones comparten una sola llamada a Serper por fila; si no hay resultado, se conserva el nombre del Excel. Si no se configura, la importación funciona igual pero solo usa la columna `image_url` del Excel.
+   La función busca por nombre del producto y, según las casillas marcadas al importar, descarga/sube hasta 4 imágenes al bucket `catalog-images` y/o devuelve el `title` encontrado. Busca 10 candidatos en Serper, descarta duplicados y sube los primeros 4 válidos (máx. 5 MB cada uno). Si hay menos de 4, los espacios restantes conservan el valor del Excel o quedan vacíos. La primera imagen se guarda en `image_url` y las demás en `image_urls`. Tras cambiar la función hay que volver a desplegarla con `supabase functions deploy search-product-images`. Ambas opciones comparten una sola llamada a Serper por fila; si no hay resultado, se conserva el nombre del Excel. Si no se configura, la importación funciona igual pero solo usa las columnas de imagen del Excel.
 
 7. (Recomendado) Exigir MFA a los administradores:
    1. Habilitar TOTP en **Authentication → MFA** del panel de Supabase.
@@ -99,8 +100,9 @@ y colocar la URL, la anon key y `VITE_REQUIRE_MFA` del proyecto nuevo en el `.en
 
 ## Uso
 
-- **Productos / Marcas / Categorías**: alta, edición, eliminación y búsqueda manual. Los logos e imágenes se suben al bucket `catalog-images`.
-- **Importar Excel**: seleccionar un `.xlsx`/`.xls`, revisar la previsualización y confirmar. En el modal se elige el estado y se pueden activar por separado la búsqueda de imágenes (solo filas sin `image_url`) y el uso del título de Serper como nombre. Las filas se insertan con `upsert` usando `sku` como clave, por lo que repetir un SKU actualiza el producto. Las marcas y categorías que no existan se crean automáticamente.
+- **Productos / Marcas / Categorías**: alta, edición, eliminación y búsqueda manual. Cada producto admite hasta 4 imágenes (archivo o URL) y todas se suben al bucket `catalog-images`.
+- **Importar Excel**: seleccionar un `.xlsx`/`.xls`, revisar la previsualización y confirmar. En el modal se elige el estado y se pueden activar por separado la búsqueda de imágenes (solo filas con columnas de imagen vacías; rellena los huecos sin pisar las del Excel) y el uso del título de Serper como nombre.
+ Las filas se insertan con `upsert` usando `sku` como clave, por lo que repetir un SKU actualiza el producto. Las marcas y categorías que no existan se crean automáticamente.
 - Para que un producto aparezca en la tienda, su estado debe ser **Publicado** (`published`).
 
 ### Columnas del Excel
@@ -115,7 +117,10 @@ y colocar la URL, la anon key y `VITE_REQUIRE_MFA` del proyecto nuevo en el `.en
 | `sale_price` | price, precio, precio_venta | Numérico en dólares; se convierte a soles (x3.46) al importar |
 | `stock` | existencia, cantidad | Entero >= 0. Si hay varias columnas con prefijo `stock`, `existencia` o `cantidad` (por ejemplo `stock_lima`, `stock_arequipa`), se suman automáticamente; si existe una columna `stock` con valor, esa columna tiene prioridad |
 | `status` | estado | draft, review, published, archived (o borrador, revisión, publicado, archivado). Por defecto `draft` |
-| `image_url` | image, imagen, url_imagen | URL pública de la imagen. Si falta y la búsqueda está activa, se obtiene por nombre con Serper |
+| `image_url` | image, imagen, url_imagen | URL pública de la imagen principal. Si falta y la búsqueda está activa, se obtiene por nombre con Serper |
+| `image_url_2` | image_2, imagen_2 | Segunda imagen. Si falta, Serper puede completarla |
+| `image_url_3` | image_3, imagen_3 | Tercera imagen. Si falta, Serper puede completarla |
+| `image_url_4` | image_4, imagen_4 | Cuarta imagen. Si falta, Serper puede completarla |
 
 Se aceptan encabezados con mayúsculas, acentos, espacios o guiones bajos. El botón **Descargar plantilla** genera un archivo de ejemplo.
 

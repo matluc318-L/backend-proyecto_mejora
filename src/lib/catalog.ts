@@ -95,6 +95,7 @@ function productPayload(input: ProductInput) {
     stock: input.stock,
     status: input.status,
     image_url: input.image_url || null,
+    image_urls: input.image_urls?.length ? input.image_urls : null,
   }
 }
 

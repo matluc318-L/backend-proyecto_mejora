@@ -4,11 +4,17 @@ import { deleteProduct, saveProduct } from '../../lib/catalog'
 import type { ProductInput } from '../../lib/catalog'
 import { friendlyError } from '../../lib/errors'
 import { uploadImage } from '../../lib/supabase'
-import type { Brand, Category, Product, Status } from '../../lib/types'
+import { PRODUCT_IMAGE_COUNT, type Brand, type Category, type Product, type Status } from '../../lib/types'
 import { useToast } from '../toastContext'
 import { Button, Empty, Field, Modal, StatusBadge, inputClass } from '../ui'
 
-const blank: ProductInput = {
+type ProductForm = Omit<ProductInput, 'image_url' | 'image_urls'> & {
+  images: (string | null)[]
+}
+
+const blankImages = () => Array.from({ length: PRODUCT_IMAGE_COUNT }, () => null)
+
+const blank: ProductForm = {
   sku: '',
   name: '',
   brand_id: null,
@@ -17,7 +23,7 @@ const blank: ProductInput = {
   sale_price: null,
   stock: 0,
   status: 'draft',
-  image_url: null,
+  images: blankImages(),
 }
 
 export function ProductsPage({
@@ -39,8 +45,8 @@ export function ProductsPage({
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('all')
   const [editing, setEditing] = useState<Product | 'new' | null>(null)
-  const [form, setForm] = useState<ProductInput>(blank)
-  const [file, setFile] = useState<File | null>(null)
+  const [form, setForm] = useState<ProductForm>(blank)
+  const [files, setFiles] = useState<(File | null)[]>(blankImages)
   const [saving, setSaving] = useState(false)
   const [pageNumber, setPageNumber] = useState(1)
   const pageSize = 15
@@ -66,7 +72,7 @@ export function ProductsPage({
 
   function openForm(product: Product | 'new') {
     setEditing(product)
-    setFile(null)
+    setFiles(blankImages())
     if (product === 'new') {
       setForm(blank)
       return
@@ -80,7 +86,9 @@ export function ProductsPage({
       sale_price: product.sale_price,
       stock: product.stock,
       status: product.status,
-      image_url: product.image_url,
+      images: Array.from({ length: PRODUCT_IMAGE_COUNT }, (_, index) =>
+        index === 0 ? product.image_url : (product.image_urls?.[index - 1] ?? null),
+      ),
     })
   }
 
@@ -91,11 +99,18 @@ export function ProductsPage({
     }
     setSaving(true)
     try {
-      const imageUrl = file ? await uploadImage(file, 'products') : form.image_url
+      const { images, ...fields } = form
+      const imageUrls = [...images]
+      for (let index = 0; index < files.length; index++) {
+        const file = files[index]
+        if (!file) continue
+        imageUrls[index] = await uploadImage(file, 'products')
+      }
       await saveProduct({
-        ...form,
+        ...fields,
         id: editing !== 'new' ? editing?.id : undefined,
-        image_url: imageUrl,
+        image_url: imageUrls[0] ?? null,
+        image_urls: imageUrls.slice(1).filter((url): url is string => Boolean(url)),
       })
       notify(editing === 'new' ? 'Producto creado' : 'Producto actualizado')
       setEditing(null)
@@ -327,24 +342,34 @@ export function ProductsPage({
               <option value="archived">Archivado</option>
             </select>
           </Field>
-          <Field label="Imagen" hint="Sube un archivo o pega una URL">
-            <input
-              className={inputClass}
-              type="file"
-              accept="image/*"
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-            />
-          </Field>
-          <div className="sm:col-span-2">
-            <Field label="URL de imagen">
-              <input
-                className={inputClass}
-                value={form.image_url ?? ''}
-                onChange={(event) => setForm({ ...form, image_url: event.target.value || null })}
-                placeholder="https://..."
-              />
-            </Field>
-          </div>
+          {form.images.map((url, index) => (
+            <div className="grid gap-4 sm:col-span-2 sm:grid-cols-2" key={index}>
+              <Field label={`Imagen ${index + 1} · archivo`}>
+                <input
+                  className={inputClass}
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => {
+                    const next = [...files]
+                    next[index] = event.target.files?.[0] ?? null
+                    setFiles(next)
+                  }}
+                />
+              </Field>
+              <Field label={`Imagen ${index + 1} · URL`} hint="Pega una URL o sube un archivo">
+                <input
+                  className={inputClass}
+                  value={url ?? ''}
+                  onChange={(event) => {
+                    const next = [...form.images]
+                    next[index] = event.target.value || null
+                    setForm({ ...form, images: next })
+                  }}
+                  placeholder="https://..."
+                />
+              </Field>
+            </div>
+          ))}
           <div className="sm:col-span-2">
             <Field label="Descripción">
               <textarea

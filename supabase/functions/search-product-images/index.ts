@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const maxNames = 10
+const maxImagesPerProduct = 4
 const bucket = 'catalog-images'
 const allowedOrigins = (Deno.env.get('ALLOWED_ORIGINS') ?? '')
   .split(',')
@@ -16,6 +17,7 @@ type SearchItem = {
 type SearchResult = {
   index: number
   image_url: string | null
+  image_urls: (string | null)[]
   title: string | null
   error?: string
 }
@@ -116,6 +118,15 @@ function extensionOf(contentType: string, url: string) {
   return match ? match[1].toLowerCase() : 'jpg'
 }
 
+function emptyImageUrls(): (string | null)[] {
+  return Array.from({ length: maxImagesPerProduct }, () => null)
+}
+
+function candidateKey(url: string) {
+  const parsed = new URL(url)
+  return `${parsed.hostname}${parsed.pathname.replace(/(_\d+x\d+)?\.(jpe?g|png|webp|gif)$/i, '')}`
+}
+
 Deno.serve(async (req) => {
   const origin = req.headers.get('origin')
   const headers = corsHeaders(origin)
@@ -164,7 +175,7 @@ Deno.serve(async (req) => {
   for (let index = 0; index < items.length; index++) {
     const item = items[index]
     if (!item.includeImage && !item.includeTitle) {
-      results.push({ index, image_url: null, title: null })
+      results.push({ index, image_url: null, image_urls: emptyImageUrls(), title: null })
       continue
     }
 
@@ -172,7 +183,7 @@ Deno.serve(async (req) => {
       const searchResponse = await fetch('https://google.serper.dev/images', {
         method: 'POST',
         headers: { 'X-API-KEY': serperKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ q: item.name, gl: 'pe', hl: 'es', num: 5 }),
+        body: JSON.stringify({ q: item.name, gl: 'pe', hl: 'es', num: 10 }),
       })
       if (!searchResponse.ok) throw new Error(`Serper respondió ${searchResponse.status}`)
       const searchData = await searchResponse.json()
@@ -195,14 +206,19 @@ Deno.serve(async (req) => {
             image.url !== null && image.width >= 200 && image.height >= 200,
         )
 
-      let imageUrl: string | null = null
+      const imageUrls: string[] = []
       let imageTitle: string | null = null
       if (item.includeTitle && candidates.length) imageTitle = candidates[0]?.title || null
 
       if (item.includeImage) {
         if (!supabaseUrl || !serviceKey) throw new Error('Supabase no configurado')
         const storage = createClient(supabaseUrl, serviceKey).storage.from(bucket)
+        const seen = new Set<string>()
         for (const candidate of candidates) {
+          if (imageUrls.length >= maxImagesPerProduct) break
+          const key = candidateKey(candidate.url)
+          if (seen.has(key)) continue
+          seen.add(key)
           try {
             const imageResponse = await fetch(candidate.url, {
               headers: { 'User-Agent': 'Mozilla/5.0' },
@@ -216,26 +232,36 @@ Deno.serve(async (req) => {
             const { error } = await storage.upload(path, bytes, { contentType, upsert: false })
             if (error) continue
             const { data } = storage.getPublicUrl(path)
-            imageUrl = data.publicUrl
-            if (item.includeTitle) imageTitle = candidate.title || null
-            break
+            imageUrls.push(data.publicUrl)
+            if (item.includeTitle && !imageTitle) imageTitle = candidate.title || null
           } catch {
             continue
           }
         }
       }
 
-      const missing = item.includeImage ? !imageUrl : !imageTitle
+      const imageSlots = emptyImageUrls()
+      imageUrls.forEach((url, slot) => {
+        imageSlots[slot] = url
+      })
+      const missing = item.includeImage ? !imageUrls.length : !imageTitle
       results.push({
         index,
-        image_url: imageUrl,
+        image_url: imageUrls[0] ?? null,
+        image_urls: imageSlots,
         title: imageTitle,
         ...(missing
-          ? { error: item.includeImage ? 'No se encontró una imagen válida' : 'No se encontró un título' }
+          ? { error: item.includeImage ? 'No se encontraron imágenes válidas' : 'No se encontró un título' }
           : {}),
       })
     } catch {
-      results.push({ index, image_url: null, title: null, error: 'Error al buscar' })
+      results.push({
+        index,
+        image_url: null,
+        image_urls: emptyImageUrls(),
+        title: null,
+        error: 'Error al buscar',
+      })
     }
   }
 

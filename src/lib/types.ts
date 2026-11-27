@@ -1,5 +1,7 @@
 export type Status = 'draft' | 'review' | 'published' | 'archived'
 
+export const PRODUCT_IMAGE_COUNT = 4
+
 export type Brand = {
   id: string
   name: string
@@ -25,6 +27,7 @@ export type Product = {
   stock: number
   status: Status
   image_url: string | null
+  image_urls: string[] | null
   updated_at?: string
   brand?: { name: string } | null
   category?: { name: string } | null
@@ -54,5 +57,8 @@ export type ImportRow = {
   stock: number
   status: Status
   image_url: string | null
+  image_url_2: string | null
+  image_url_3: string | null
+  image_url_4: string | null
   errors: string[]
 }
